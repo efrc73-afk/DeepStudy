@@ -199,15 +199,14 @@ class Neo4jClient:
         """
         核心功能：查找从基础到目标概念的学习路径
         """
-        # 这句 Cypher 的意思是：
-        # 找到一个叫 target_concept_name 的节点
-        # 然后往回找（<-[:REQUIRES*]-），直到找到没有依赖的根节点
-        # path 就是这条路
+        # 修改点 1: 箭头方向改了！从 target 往外找 root
+        # (target) -[...]-> (root)
+        # 修改点 2: 结果要反转 (reverse)，因为我们想返回 [高数, 极限, 导数]
         query = """
         MATCH (target:Concept {name: $name})
-        MATCH path = (root)-[:REQUIRES|PART_OF*]->(target)
-        RETURN [node in nodes(path) | node.name] AS steps
-        ORDER BY length(path) DESC
+        MATCH path = (target)-[:REQUIRES|PART_OF*]->(root)
+        WHERE NOT (root)-[:REQUIRES|PART_OF]->()
+        RETURN reverse([node in nodes(path) | node.name]) AS steps
         LIMIT 1
         """
         
@@ -217,7 +216,6 @@ class Neo4jClient:
                 record = await result.single()
                 
                 if record:
-                    # record["steps"] 就是数据库返回的列表
                     path = record["steps"]
                     logger.info(f"Found learning path for {target_concept_name}: {path}")
                     return path
