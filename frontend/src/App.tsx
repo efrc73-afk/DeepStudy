@@ -3,6 +3,7 @@ import Login from './components/Auth/Login'
 import Register from './components/Auth/Register'
 import ChatInterface from './components/Chat/ChatInterface'
 import { useAuth } from './hooks/useAuth'
+import './App.css'
 
 /**
  * 应用主组件
@@ -12,16 +13,20 @@ function App() {
   const { isAuthenticated } = useAuth()
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route
-        path="/"
-        element={
-          isAuthenticated() ? <ChatInterface /> : <Navigate to="/login" replace />
+    <div className="app-background">
+      <div className="app-content">
+       <Routes>
+        <Route path="/login" element={<Login />} />
+         <Route path="/register" element={<Register />} />
+         <Route
+          path="/"
+          element={
+            isAuthenticated() ? <ChatInterface /> : <Navigate to="/login" replace />
         }
       />
-    </Routes>
+     </Routes>
+    </div>
+   </div>
   )
 }
 
