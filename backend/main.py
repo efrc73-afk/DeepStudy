@@ -4,7 +4,8 @@ FastAPI 应用入口
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.config import settings
-from backend.api.routes import auth, chat, mindmap
+# from backend.api.routes import auth, chat, mindmap
+from backend.api.routes import auth
 from backend.data.sqlite_db import init_db
 import asyncio
 
@@ -28,9 +29,9 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(auth.router)
-app.include_router(chat.router)
-app.include_router(mindmap.router)
+app.include_router(auth.router, prefix="/api")
+# app.include_router(chat.router)
+# app.include_router(mindmap.router)
 
 
 @app.on_event("startup")
