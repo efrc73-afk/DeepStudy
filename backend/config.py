@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     JWT_EXPIRATION_HOURS: int = 24
     
     # SQLite 数据库
-    SQLITE_DB_PATH: str = "./data/deepstudy.db"
+    SQLITE_DB_PATH: str = "backend/storage/deepstudy.db"
     
     # 向量存储
-    VECTOR_STORE_PATH: str = "./data/vector_store"
+    VECTOR_STORE_PATH: str = "backend/storage/vector_store"
     
     # CORS
     CORS_ORIGINS: str = '["http://localhost:5173","http://localhost:3000"]'  # JSON 字符串格式

@@ -3,9 +3,26 @@
 识别用户意图（推导/代码/概念），调用不同的处理策略
 """
 from enum import Enum
-from typing import Dict, Any
-from llama_index.llms.base import LLM
+from typing import Dict, Any, Protocol
 from backend.config import settings
+
+
+class LLM(Protocol):
+    """
+    LLM 协议接口
+    兼容 llama-index 0.10.x 的 LLM 接口
+    """
+    async def acomplete(self, prompt: str):
+        """
+        完成文本生成
+        
+        Args:
+            prompt: 输入提示词
+            
+        Returns:
+            响应对象（包含 text 属性）
+        """
+        ...
 
 
 class IntentType(str, Enum):
@@ -49,34 +66,16 @@ class IntentRouter:
     
     async def route(self, query: str) -> IntentType:
         """
-        识别用户意图
+        识别用户意图（缺省实现：总是返回 CONCEPT）
         
         Args:
             query: 用户查询
             
         Returns:
-            意图类型
-        """
-        prompt = f"""
-{self.few_shot_examples}
-
-请根据以下问题判断意图类型（derivation/code/concept）:
-
-问题: "{query}"
-意图: 
-"""
+            意图类型（当前缺省返回 CONCEPT）
         
-        try:
-            response = await self.llm.acomplete(prompt)
-            intent_str = response.text.strip().lower()
-            
-            # 解析意图
-            if "code" in intent_str or "代码" in intent_str:
-                return IntentType.CODE
-            elif "derivation" in intent_str or "推导" in intent_str:
-                return IntentType.DERIVATION
-            else:
-                return IntentType.CONCEPT
-        except Exception:
-            # 默认返回概念型
-            return IntentType.CONCEPT
+        TODO: 后续可以实现真正的 Few-shot 意图识别
+        """
+        # 缺省实现：暂时跳过 LLM 调用，直接返回 CONCEPT
+        # 保留代码结构，便于后续完善
+        return IntentType.CONCEPT

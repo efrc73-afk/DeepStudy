@@ -3,7 +3,7 @@
 """
 from backend.agent.strategies.base_strategy import BaseStrategy
 from backend.agent.prompts.system_prompts import CONCEPT_PROMPT
-from backend.api.schemas.response import AgentResponse, TextFragment
+from backend.api.schemas.response import AgentResponse
 
 
 class ConceptStrategy(BaseStrategy):
@@ -45,6 +45,6 @@ class ConceptStrategy(BaseStrategy):
             answer=answer,
             fragments=[],
             knowledge_triples=[],
-            conversation_id="placeholder",
+            conversation_id="",  # 由 orchestrator 生成
             parent_id=context.get("parent_id") if context else None
         )

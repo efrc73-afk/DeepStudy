@@ -120,7 +120,7 @@ const ChatInterface = () => {
     position: 'relative',
     display: 'flex',
     height: '100vh',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'transparent',
   }
 
   const backgroundStyle: React.CSSProperties = {
@@ -143,7 +143,7 @@ const ChatInterface = () => {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: 'white',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     margin: '16px',
     borderRadius: '8px',
     boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
@@ -165,7 +165,7 @@ const ChatInterface = () => {
     flex: 1,
     overflowY: 'auto',
     padding: '24px',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'rgba(249, 250, 251, 0.6)',
   }
 
   const userMessageStyle: React.CSSProperties = {
@@ -239,7 +239,7 @@ const ChatInterface = () => {
   const sidebarStyle: React.CSSProperties = {
     width: sidebarOpen ? '400px' : '0',
     borderLeft: sidebarOpen ? '1px solid #E5E7EB' : 'none',
-    backgroundColor: 'white',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     transition: 'width 0.3s',
     overflow: 'hidden',
     display: 'flex',

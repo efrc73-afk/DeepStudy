@@ -62,19 +62,6 @@ async def init_db():
         )
     """)
     
-    # 创建对话表
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            id TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            parent_id TEXT,
-            query TEXT NOT NULL,
-            answer TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    """)
-    
     await db.commit()
     await db.close()
 
@@ -154,75 +141,3 @@ async def get_user_by_email(
     return None
 
 
-async def save_conversation(
-    db: aiosqlite.Connection,
-    user_id: str,
-    conversation_id: str,
-    parent_id: Optional[str],
-    query: str,
-    answer: str
-):
-    """
-    保存对话记录
-    
-    Args:
-        db: 数据库连接
-        user_id: 用户 ID
-        conversation_id: 对话 ID
-        parent_id: 父对话 ID
-        query: 用户查询
-        answer: AI 回答
-    """
-    created_at = datetime.utcnow().isoformat()
-    await db.execute(
-        "INSERT INTO conversations (id, user_id, parent_id, query, answer, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (conversation_id, user_id, parent_id, query, answer, created_at)
-    )
-    await db.commit()
-
-
-async def get_conversation_tree(
-    db: aiosqlite.Connection,
-    conversation_id: str,
-    user_id: str
-) -> Optional[Dict]:
-    """
-    获取对话树
-    
-    Args:
-        db: 数据库连接
-        conversation_id: 对话 ID
-        user_id: 用户 ID
-        
-    Returns:
-        对话树节点字典，如果不存在则返回 None
-    """
-    # 获取当前对话
-    cursor = await db.execute(
-        "SELECT * FROM conversations WHERE id = ? AND user_id = ?",
-        (conversation_id, user_id)
-    )
-    row = await cursor.fetchone()
-    if not row:
-        return None
-    
-    conversation = dict(row)
-    
-    # 递归获取子对话
-    children_cursor = await db.execute(
-        "SELECT * FROM conversations WHERE parent_id = ? AND user_id = ?",
-        (conversation_id, user_id)
-    )
-    children_rows = await children_cursor.fetchall()
-    children = [dict(row) for row in children_rows]
-    
-    # 递归构建子树
-    for child in children:
-        child_tree = await get_conversation_tree(db, child["id"], user_id)
-        if child_tree:
-            child["children"] = child_tree.get("children", [])
-        else:
-            child["children"] = []
-    
-    conversation["children"] = children
-    return conversation

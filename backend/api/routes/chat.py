@@ -1,12 +1,16 @@
 """
 聊天相关路由
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from backend.api.schemas.request import ChatRequest
 from backend.api.schemas.response import AgentResponse, DialogueNodeBase, ErrorResponse
 from backend.api.middleware.auth import get_current_user_id
 from backend.agent.orchestrator import AgentOrchestrator
-from backend.data.sqlite_db import get_db, save_conversation, get_conversation_tree
+from backend.data.neo4j_client import neo4j_client
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -27,12 +31,17 @@ async def chat(
     Returns:
         Agent 响应
     """
+    logger.info(f"收到聊天请求: user_id={user_id}, query={request.query[:50] if len(request.query) > 50 else request.query}...")
+    logger.info(f"请求详情: parent_id={request.parent_id}, ref_fragment_id={request.ref_fragment_id}, session_id={request.session_id}")
+    
     try:
+        logger.info("初始化 Orchestrator...")
         orchestrator = AgentOrchestrator()
+        logger.info("Orchestrator 初始化成功")
         
         # 判断是否为划词追问
         if request.ref_fragment_id:
-            # 递归追问
+            logger.info("处理划词追问...")
             response = await orchestrator.process_recursive_query(
                 user_id=user_id,
                 parent_id=request.parent_id or "",
@@ -40,7 +49,7 @@ async def chat(
                 query=request.query
             )
         else:
-            # 普通提问
+            logger.info("处理普通提问...")
             response = await orchestrator.process_query(
                 user_id=user_id,
                 query=request.query,
@@ -48,19 +57,12 @@ async def chat(
                 session_id=request.session_id
             )
         
-        # 保存对话记录
-        db = await get_db()
-        await save_conversation(
-            db,
-            user_id=user_id,
-            conversation_id=response.conversation_id,
-            parent_id=request.parent_id or None,
-            query=request.query,
-            answer=response.answer
-        )
-        
+        logger.info(f"处理成功，conversation_id={response.conversation_id}")
         return response
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"处理请求时出错: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"处理请求时出错: {str(e)}"
@@ -73,22 +75,52 @@ async def get_conversation(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    获取对话树
+    获取对话树（从 Neo4j 查询）
     
     Args:
-        conversation_id: 对话 ID
+        conversation_id: 对话 ID（AI 节点 ID）
         user_id: 当前用户 ID
         
     Returns:
         对话树节点
     """
-    db = await get_db()
-    tree = await get_conversation_tree(db, conversation_id, user_id)
-    
-    if not tree:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="对话不存在"
+    try:
+        tree = await neo4j_client.get_dialogue_tree(
+            root_node_id=conversation_id,
+            user_id=user_id
         )
-    
-    return tree
+        
+        if not tree:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="对话不存在"
+            )
+        
+        # 递归转换子节点
+        def convert_node(node_dict: dict) -> DialogueNodeBase:
+            """递归转换节点字典为 DialogueNodeBase"""
+            children = []
+            for child_dict in node_dict.get("children", []):
+                children.append(convert_node(child_dict))
+            
+            return DialogueNodeBase(
+                node_id=node_dict.get("node_id", ""),
+                parent_id=None,  # 子节点的 parent_id 在 Neo4j 中通过关系维护
+                user_id=node_dict.get("user_id", user_id),
+                role=node_dict.get("role", "assistant"),
+                content=node_dict.get("content", ""),
+                intent=node_dict.get("intent"),
+                mastery_score=node_dict.get("mastery_score", 0.0),
+                timestamp=node_dict.get("timestamp"),
+                children=children
+            )
+        
+        # 转换为 DialogueNodeBase 格式
+        return convert_node(tree)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"查询对话树失败: {str(e)}"
+        )
