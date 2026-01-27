@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../../services/api'
 import { UserCreate } from '../../types/api'
@@ -8,6 +8,7 @@ import { UserCreate } from '../../types/api'
  */
 const Register = () => {
   const navigate = useNavigate()
+  const usernameInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState<UserCreate>({
     username: '',
     email: '',
@@ -15,6 +16,11 @@ const Register = () => {
   })
   const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
+
+  // 页面加载时自动聚焦用户名输入框
+  useEffect(() => {
+    usernameInputRef.current?.focus()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,104 +37,236 @@ const Register = () => {
     }
   }
 
+  // 统一样式常量
+  const containerStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '100vh',
+    backgroundColor: 'transparent',
+  }
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: 'white',
+    padding: '24px',
+    borderRadius: '8px',
+    boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+    width: '100%',
+    maxWidth: '400px',
+  }
+
+  const headerStyle: React.CSSProperties = {
+    marginBottom: '24px',
+    textAlign: 'center',
+  }
+
+  const titleStyle: React.CSSProperties = {
+    fontSize: '24px',
+    fontWeight: 600,
+    color: '#111827',
+    margin: 0,
+    marginBottom: '8px',
+  }
+
+  const subtitleStyle: React.CSSProperties = {
+    fontSize: '14px',
+    color: '#6B7280',
+    margin: 0,
+  }
+
+  const formGroupStyle: React.CSSProperties = {
+    marginBottom: '16px',
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: 500,
+    color: '#374151',
+    marginBottom: '6px',
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px',
+    border: '1px solid #D1D5DB',
+    borderRadius: '6px',
+    fontSize: '16px',
+    outline: 'none',
+    transition: 'border-color 0.2s',
+  }
+
+  const hintStyle: React.CSSProperties = {
+    fontSize: '12px',
+    color: '#6B7280',
+    marginTop: '4px',
+  }
+
+  const errorStyle: React.CSSProperties = {
+    color: '#EF4444',
+    backgroundColor: '#FEE2E2',
+    padding: '8px',
+    borderRadius: '4px',
+    fontSize: '14px',
+    marginBottom: '12px',
+  }
+
+  const buttonStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#2563EB',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '16px',
+    fontWeight: 500,
+    cursor: loading ? 'not-allowed' : 'pointer',
+    opacity: loading ? 0.6 : 1,
+    transition: 'background-color 0.2s',
+  }
+
+  const footerStyle: React.CSSProperties = {
+    marginTop: '16px',
+    textAlign: 'center',
+    fontSize: '14px',
+    color: '#6B7280',
+  }
+
+  const linkStyle: React.CSSProperties = {
+    color: '#2563EB',
+    textDecoration: 'none',
+  }
+
   return (
-    <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      minHeight: '100vh',
-      backgroundColor: '#f5f5f5'
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        padding: '2rem',
-        borderRadius: '8px',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-        width: '100%',
-        maxWidth: '400px'
-      }}>
-        <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>注册</h2>
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        {/* Header 区 */}
+        <div style={headerStyle}>
+          <h2 style={titleStyle}>注册</h2>
+          <p style={subtitleStyle}>创建账号，开始构建你的知识图谱</p>
+        </div>
+
+        {/* Form 区 */}
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-              用户名
-            </label>
+          <div style={formGroupStyle}>
+            <label style={labelStyle}>用户名</label>
             <input
+              ref={usernameInputRef}
               type="text"
               value={formData.username}
-              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, username: e.target.value })
+                setError('')
+              }}
               required
+              disabled={loading}
               style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px'
+                ...inputStyle,
+                ...(loading ? { backgroundColor: '#F3F4F6', cursor: 'not-allowed' } : {}),
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#2563EB'
+                e.target.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.1)'
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB'
+                e.target.style.boxShadow = 'none'
               }}
             />
           </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-              邮箱
-            </label>
+
+          <div style={formGroupStyle}>
+            <label style={labelStyle}>邮箱</label>
             <input
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, email: e.target.value })
+                setError('')
+              }}
               required
+              disabled={loading}
               style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px'
+                ...inputStyle,
+                ...(loading ? { backgroundColor: '#F3F4F6', cursor: 'not-allowed' } : {}),
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#2563EB'
+                e.target.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.1)'
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB'
+                e.target.style.boxShadow = 'none'
               }}
             />
           </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-              密码
-            </label>
+
+          <div style={formGroupStyle}>
+            <label style={labelStyle}>密码</label>
             <input
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, password: e.target.value })
+                setError('')
+              }}
               required
+              disabled={loading}
               style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px'
+                ...inputStyle,
+                ...(loading ? { backgroundColor: '#F3F4F6', cursor: 'not-allowed' } : {}),
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#2563EB'
+                e.target.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.1)'
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB'
+                e.target.style.boxShadow = 'none'
               }}
             />
+            <div style={hintStyle}>至少 6 位字符</div>
           </div>
+
+          {/* 错误提示 */}
           {error && (
-            <div style={{ 
-              color: 'red', 
-              marginBottom: '1rem', 
-              fontSize: '0.875rem' 
-            }}>
+            <div style={errorStyle} role="alert">
               {error}
             </div>
           )}
+
+          {/* 提交按钮 */}
           <button
             type="submit"
             disabled={loading}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1
+            style={buttonStyle}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.backgroundColor = '#1D4ED8'
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#2563EB'
             }}
           >
             {loading ? '注册中...' : '注册'}
           </button>
         </form>
-        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-          <Link to="/login" style={{ color: '#007bff', textDecoration: 'none' }}>
-            已有账号？登录
+
+        {/* Footer 区 */}
+        <div style={footerStyle}>
+          <span>已有账号？</span>
+          <Link
+            to="/login"
+            style={linkStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.textDecoration = 'underline'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.textDecoration = 'none'
+            }}
+          >
+            登录
           </Link>
         </div>
       </div>

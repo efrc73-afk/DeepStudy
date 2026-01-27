@@ -1,5 +1,6 @@
 import logging
 from typing import List, Dict, Optional
+from datetime import datetime
 from neo4j import AsyncGraphDatabase
 from neo4j.exceptions import (
     ServiceUnavailable, 
@@ -14,7 +15,7 @@ logger = logging.getLogger("neo4j_client")
 logging.basicConfig(level=logging.INFO)
 
 class Neo4jClient:
-    """Neo4j 客户端（带异常处理版）"""
+    """Neo4j 客户端（整合版：包含基础功能、学习路径及对话记忆）"""
     
     def __init__(self):
         """初始化 Neo4j 客户端并建立连接池"""
@@ -40,7 +41,6 @@ class Neo4jClient:
             logger.info("Neo4j connection verified successfully.")
         except (ServiceUnavailable, AuthError) as e:
             logger.error(f"Neo4j connection verification failed: {e}")
-            # 可以在这里抛出自定义异常，通知上层应用数据库不可用
             raise
 
     async def close(self):
@@ -49,16 +49,13 @@ class Neo4jClient:
             await self.driver.close()
             logger.info("Neo4j driver closed.")
     
-    async def create_node(
-        self,
-        label: str,
-        properties: Dict
-    ) -> Optional[str]:
-        """
-        创建节点（处理唯一性约束冲突）
-        """
+    # ==============================
+    # 基础图谱操作 (Nodes & Relationships)
+    # ==============================
+
+    async def create_node(self, label: str, properties: Dict) -> Optional[str]:
+        """创建节点（处理唯一性约束冲突）"""
         query = f"CREATE (n:{label} $properties) RETURN id(n) as node_id"
-        
         try:
             async with self.driver.session() as session:
                 result = await session.run(query, properties=properties)
@@ -66,41 +63,23 @@ class Neo4jClient:
                 node_id = str(record["node_id"])
                 logger.debug(f"Created node [{label}] with ID: {node_id}")
                 return node_id
-                
         except ConstraintError as e:
-            # 当违反唯一性约束时（例如用户名重复）
             logger.warning(f"Constraint violated while creating node {label}: {e}")
-            return None  # 或者 raise 此异常，取决于业务逻辑
-            
+            return None
         except Exception as e:
             logger.error(f"Error creating node {label}: {e}")
-            raise  # 其他未知错误继续向上抛出
+            raise
 
     async def create_relationship(
-        self,
-        source_id: str,
-        target_id: str,
-        relation_type: str,
-        properties: Optional[Dict] = None
+        self, source_id: str, target_id: str, relation_type: str, properties: Optional[Dict] = None
     ) -> bool:
-        """
-        创建关系（增加返回值表示成功/失败）
-        """
-        query = f"""
-            MATCH (a), (b)
-            WHERE id(a) = $source_id AND id(b) = $target_id
-            CREATE (a)-[r:{relation_type}]->(b)
-        """
-        if properties:
-            query = f"""
-            MATCH (a), (b)
-            WHERE id(a) = $source_id AND id(b) = $target_id
-            CREATE (a)-[r:{relation_type} $properties]->(b)
-            """
+        """创建关系"""
+        query_base = f"MATCH (a), (b) WHERE id(a) = $source_id AND id(b) = $target_id"
+        create_part = f"CREATE (a)-[r:{relation_type} $properties]->(b)" if properties else f"CREATE (a)-[r:{relation_type}]->(b)"
+        query = f"{query_base} {create_part}"
 
         try:
             async with self.driver.session() as session:
-                # 检查 source_id 和 target_id 是否为有效数字
                 if not (source_id.isdigit() and target_id.isdigit()):
                      logger.error(f"Invalid ID format: {source_id}, {target_id}")
                      return False
@@ -111,7 +90,6 @@ class Neo4jClient:
                     target_id=int(target_id),
                     properties=properties or {}
                 )
-                # 获取执行摘要以确认是否有关系被创建
                 summary = await result.consume()
                 if summary.counters.relationships_created > 0:
                     logger.debug(f"Created relationship {relation_type} between {source_id} and {target_id}")
@@ -119,63 +97,37 @@ class Neo4jClient:
                 else:
                     logger.warning(f"Failed to create relationship: Nodes {source_id} or {target_id} not found.")
                     return False
-                    
         except Exception as e:
             logger.error(f"Error creating relationship: {e}")
             return False
 
-    async def get_node_by_name(
-        self,
-        label: str,
-        name: str
-    ) -> Optional[Dict]:
+    async def get_node_by_name(self, label: str, name: str) -> Optional[Dict]:
         """根据名称获取节点"""
         query = f"MATCH (n:{label} {{name: $name}}) RETURN n, id(n) as node_id"
-        
         try:
             async with self.driver.session() as session:
                 result = await session.run(query, name=name)
                 record = await result.single()
-                
                 if record:
                     node = dict(record["n"])
                     node["id"] = str(record["node_id"])
                     return node
-                else:
-                    logger.debug(f"Node not found: {label} {{name: {name}}}")
-                    return None
-                    
-        except ServiceUnavailable as e:
-            logger.critical(f"Database unavailable during get_node_by_name: {e}")
-            return None
+                return None
         except Exception as e:
-            logger.error(f"Unexpected error in get_node_by_name: {e}")
+            logger.error(f"Error in get_node_by_name: {e}")
             return None
 
-    async def get_related_nodes(
-        self,
-        node_id: str,
-        relation_type: Optional[str] = None
-    ) -> List[Dict]:
+    async def get_related_nodes(self, node_id: str, relation_type: Optional[str] = None) -> List[Dict]:
         """获取相关节点"""
         try:
             async with self.driver.session() as session:
                 if not node_id.isdigit():
-                    logger.warning(f"Invalid node_id: {node_id}")
                     return []
 
                 if relation_type:
-                    query = f"""
-                    MATCH (a)-[r:{relation_type}]->(b)
-                    WHERE id(a) = $node_id
-                    RETURN b, id(b) as node_id, type(r) as relation
-                    """
+                    query = f"MATCH (a)-[r:{relation_type}]->(b) WHERE id(a) = $node_id RETURN b, id(b) as node_id, type(r) as relation"
                 else:
-                    query = """
-                    MATCH (a)-[r]->(b)
-                    WHERE id(a) = $node_id
-                    RETURN b, id(b) as node_id, type(r) as relation
-                    """
+                    query = "MATCH (a)-[r]->(b) WHERE id(a) = $node_id RETURN b, id(b) as node_id, type(r) as relation"
                 
                 result = await session.run(query, node_id=int(node_id))
                 records = await result.values()
@@ -187,21 +139,16 @@ class Neo4jClient:
                     node["relation"] = record[2]
                     nodes.append(node)
                 return nodes
-                
         except Exception as e:
             logger.error(f"Error getting related nodes for {node_id}: {e}")
             return []
-        
-    async def get_learning_path(
-        self,
-        target_concept_name: str
-    ) -> List[str]:
-        """
-        核心功能：查找从基础到目标概念的学习路径
-        """
-        # 修改点 1: 箭头方向改了！从 target 往外找 root
-        # (target) -[...]-> (root)
-        # 修改点 2: 结果要反转 (reverse)，因为我们想返回 [高数, 极限, 导数]
+
+    # ==============================
+    # DeepStudy 核心功能: 学习路径
+    # ==============================
+
+    async def get_learning_path(self, target_concept_name: str) -> List[str]:
+        """查找从基础到目标概念的学习路径"""
         query = """
         MATCH (target:Concept {name: $name})
         MATCH path = (target)-[:REQUIRES|PART_OF*]->(root)
@@ -209,23 +156,94 @@ class Neo4jClient:
         RETURN reverse([node in nodes(path) | node.name]) AS steps
         LIMIT 1
         """
-        
         try:
             async with self.driver.session() as session:
                 result = await session.run(query, name=target_concept_name)
                 record = await result.single()
-                
                 if record:
                     path = record["steps"]
                     logger.info(f"Found learning path for {target_concept_name}: {path}")
                     return path
-                else:
-                    logger.warning(f"No path found for {target_concept_name}")
-                    return []
-                    
+                return []
         except Exception as e:
             logger.error(f"Error finding learning path: {e}")
             return []
+
+    # ==============================
+    # 新增功能: 对话记忆 (Dialogue Memory)
+    # ==============================
+
+    async def save_dialogue_node(
+        self, node_id: str, user_id: str, role: str, content: str, 
+        intent: Optional[str] = None, mastery_score: float = 0.0, timestamp: Optional[datetime] = None
+    ) -> None:
+        """保存对话节点"""
+        if timestamp is None:
+            timestamp = datetime.utcnow()
+        
+        async with self.driver.session() as session:
+            await session.run(
+                """
+                MERGE (n:DialogueNode {node_id: $node_id})
+                SET n.user_id = $user_id,
+                    n.role = $role,
+                    n.content = $content,
+                    n.intent = $intent,
+                    n.mastery_score = $mastery_score,
+                    n.timestamp = $timestamp
+                """,
+                node_id=node_id, user_id=user_id, role=role, content=content,
+                intent=intent, mastery_score=mastery_score, timestamp=timestamp.isoformat()
+            )
+    
+    async def link_dialogue_nodes(self, parent_node_id: str, child_node_id: str, fragment_id: Optional[str] = None) -> None:
+        """创建对话节点之间的父子关系"""
+        async with self.driver.session() as session:
+            # 简单的存在性检查 query 可以合并优化，这里保留逻辑清晰
+            query = """
+                MATCH (parent:DialogueNode {node_id: $parent_node_id})
+                MATCH (child:DialogueNode {node_id: $child_node_id})
+                MERGE (parent)-[r:HAS_CHILD]->(child)
+                SET r.fragment_id = $fragment_id
+            """
+            await session.run(query, parent_node_id=parent_node_id, child_node_id=child_node_id, fragment_id=fragment_id)
+
+    async def get_dialogue_node(self, node_id: str) -> Optional[Dict]:
+        """获取单个对话节点"""
+        async with self.driver.session() as session:
+            result = await session.run("MATCH (n:DialogueNode {node_id: $node_id}) RETURN n", node_id=node_id)
+            record = await result.single()
+            return dict(record["n"]) if record else None
+    
+    async def get_dialogue_tree(self, root_node_id: str, user_id: str, max_depth: int = 10) -> Optional[Dict]:
+        """获取对话树（递归查询）"""
+        async with self.driver.session() as session:
+            root_result = await session.run(
+                "MATCH (n:DialogueNode {node_id: $node_id, user_id: $user_id}) RETURN n",
+                node_id=root_node_id, user_id=user_id
+            )
+            root_record = await root_result.single()
+            if not root_record:
+                return None
+            
+            root_node = dict(root_record["n"])
+            # 内部递归函数
+            async def get_children(parent_id: str, depth: int) -> List[Dict]:
+                if depth >= max_depth: return []
+                result = await session.run(
+                    "MATCH (parent:DialogueNode {node_id: $parent_id})-[:HAS_CHILD]->(child:DialogueNode) RETURN child ORDER BY child.timestamp",
+                    parent_id=parent_id
+                )
+                children = []
+                async for record in result:
+                    child_node = dict(record["child"])
+                    if child_node.get("node_id"):
+                        child_node["children"] = await get_children(child_node["node_id"], depth + 1)
+                        children.append(child_node)
+                return children
+            
+            root_node["children"] = await get_children(root_node_id, 0)
+            return root_node
 
 # 全局客户端实例
 neo4j_client = Neo4jClient()
