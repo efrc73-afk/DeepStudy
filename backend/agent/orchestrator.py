@@ -32,7 +32,7 @@ class AgentOrchestrator:
     
     def __init__(self):
         """初始化编排器"""
-        logger.info("🚀 [Orchestrator] 开始初始化...")
+        logger.info(" [Orchestrator] 开始初始化...")
         
         logger.info(f"Step 1: 初始化主模型: {settings.MODEL_NAME}")
         self.llm = ModelScopeLLMClient(
@@ -114,7 +114,7 @@ class AgentOrchestrator:
         处理用户查询 (核心逻辑修改点)
         流程：意图识别 -> RAG检索 -> 策略执行 -> 存入Neo4j
         """
-        logger.info(f"🤖 [Process] 收到用户查询: {query[:50]}...")
+        logger.info(f"[Process] 收到用户查询: {query[:50]}...")
         
         # 1. 识别意图
         intent = await self.intent_router.route(query)

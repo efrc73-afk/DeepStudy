@@ -9,6 +9,7 @@ from backend.config import settings
 from backend.api.routes import auth, chat
 from backend.data.sqlite_db import init_db
 import asyncio
+from backend.api.routes import knowledge
 
 # 配置日志
 logging.basicConfig(
@@ -24,6 +25,8 @@ app = FastAPI(
     description="基于 ModelScope 的递归学习 Agent",
     version="0.1.0"
 )
+
+app.include_router(knowledge.router)
 
 # 配置 CORS
 import json
