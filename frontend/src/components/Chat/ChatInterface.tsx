@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authAPI, chatAPI, mindMapAPI } from '../../services/api'
 import { AgentResponse, MindMapGraph } from '../../types/api'
 import TextFragment from '../Markdown/TextFragment'
 import KnowledgeGraph from '../MindMap/KnowledgeGraph'
 
-/**
- * 聊天界面主组件
- * 包含对话展示、输入框、思维导图侧边栏
- */
 const ChatInterface = () => {
   const navigate = useNavigate()
+  
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   
@@ -24,20 +22,49 @@ const ChatInterface = () => {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
   const [sessionId] = useState<string>(() => `session_${Date.now()}`)
 
-  /**
-   * 自动滚动到底部
-   */
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // ==========================================
+  // 👇👇👇 稳健滚动逻辑 (使用 requestAnimationFrame) 👇👇👇
+  // ==========================================
+
+  const scrollToBottom = (behavior: 'auto' | 'smooth' = 'smooth') => {
+    if (scrollContainerRef.current) {
+        const { scrollHeight, clientHeight } = scrollContainerRef.current
+        // 直接操作 scrollTop 比 scrollIntoView 更稳
+        scrollContainerRef.current.scrollTo({
+            top: scrollHeight - clientHeight,
+            behavior: behavior
+        })
+    }
   }
 
+  // 1. 新消息加入时，平滑滚动
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, loading])
+    // 只有当是新消息（非流式更新中）或者刚开始流式输出时滚动
+    if (!loading || (loading && !hasFirstChunk)) {
+        scrollToBottom('smooth')
+    }
+  }, [messages.length, loading, hasFirstChunk])
 
-  /**
-   * 发送消息（支持普通提问和划词追问）
-   */
+  // 2. AI 打字时，智能吸附
+  useEffect(() => {
+    if (loading && hasFirstChunk) {
+        const container = scrollContainerRef.current
+        if (container) {
+            // 计算距离底部的距离
+            const distance = container.scrollHeight - container.scrollTop - container.clientHeight
+            
+            // 如果用户正在看底部 (距离 < 100px)，则瞬间吸附，防止抖动
+            if (distance < 100) {
+                requestAnimationFrame(() => {
+                    scrollToBottom('auto')
+                })
+            }
+        }
+    }
+  }, [messages]) 
+
+  // ==========================================
+
   const handleSend = async (refFragmentId?: string) => {
     if (!input.trim() || loading) return
 
@@ -47,12 +74,13 @@ const ChatInterface = () => {
     setLoading(true)
     setHasFirstChunk(false)
 
-    // 先记录用户消息
     setUserMessages(prev => [...prev, query])
 
-    // 为 AI 创建一条占位消息
     const parentId = messages.length > 0 ? messages[messages.length - 1].conversation_id : null
     const aiIndex = messages.length
+    
+    let currentConversationId = ''; 
+
     setMessages(prev => [
       ...prev,
       {
@@ -74,36 +102,29 @@ const ChatInterface = () => {
           session_id: sessionId,
         },
         (payload: { type: string; text?: string; conversation_id?: string; parent_id?: string; answer?: string }) => {
-          // 处理流式增量
+          
+          if (payload.conversation_id) {
+            currentConversationId = payload.conversation_id;
+          }
+
           if (payload.type === 'meta' && payload.conversation_id) {
-            // 更新占位消息的 conversation_id
             setMessages(prev => {
               const next = [...prev]
-              const target = next[aiIndex]
-              if (target) {
-                next[aiIndex] = {
-                  ...target,
-                  conversation_id: payload.conversation_id as string,
-                }
+              if (next[aiIndex]) {
+                next[aiIndex] = { ...next[aiIndex], conversation_id: payload.conversation_id as string }
               }
               return next
             })
           } else if (payload.type === 'delta' && payload.text) {
-            // 收到首个增量，隐藏“思考中”
             setHasFirstChunk(true)
             setMessages(prev => {
               const next = [...prev]
-              const target = next[aiIndex]
-              if (target) {
-                next[aiIndex] = {
-                  ...target,
-                  answer: (target.answer || '') + payload.text,
-                }
+              if (next[aiIndex]) {
+                next[aiIndex] = { ...next[aiIndex], answer: (next[aiIndex].answer || '') + payload.text }
               }
               return next
             })
           } else if (payload.type === 'full' && payload.answer) {
-            // 非流式划词追问路径：一次性完整返回
             setMessages(prev => {
               const next = [...prev]
               next[aiIndex] = {
@@ -120,17 +141,18 @@ const ChatInterface = () => {
         }
       )
 
-      // 流结束后，如果拿到了 conversation_id，则刷新思维导图
-      const finalMsg = (messages => messages[aiIndex])(messages)
-      if (finalMsg && finalMsg.conversation_id) {
+      if (currentConversationId) {
         try {
-          const graphData = await mindMapAPI.getMindMap(finalMsg.conversation_id)
-          setMindMapData(graphData)
+          const graphData = await mindMapAPI.getMindMap(currentConversationId)
+          if (graphData && graphData.nodes && graphData.nodes.length > 0) {
+            setMindMapData(graphData)
+            if (!sidebarOpen) setSidebarOpen(true);
+          }
         } catch (err) {
-          // 思维导图加载失败不影响主流程
           console.warn('思维导图加载失败:', err)
         }
       }
+
     } catch (error: any) {
       console.error('发送消息失败:', error)
       setUserMessages(prev => prev.slice(0, -1))
@@ -148,9 +170,6 @@ const ChatInterface = () => {
     }
   }
 
-  /**
-   * 处理片段选择（划词追问）
-   */
   const handleFragmentSelect = (fragmentId: string) => {
     const query = prompt('请输入你的问题:')
     if (query && messages.length > 0) {
@@ -161,9 +180,6 @@ const ChatInterface = () => {
     }
   }
 
-  /**
-   * 处理键盘事件
-   */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -171,20 +187,19 @@ const ChatInterface = () => {
     }
   }
 
-  /**
-   * 登出
-   */
   const handleLogout = () => {
     authAPI.logout()
     navigate('/login')
   }
 
-  // 样式常量
+  // 样式定义
   const containerStyle: React.CSSProperties = {
     position: 'relative',
     display: 'flex',
     height: '100vh',
+    width: '100vw', // 确保占满宽
     backgroundColor: 'transparent',
+    overflow: 'hidden'
   }
 
   const backgroundStyle: React.CSSProperties = {
@@ -203,6 +218,7 @@ const ChatInterface = () => {
     zIndex: -1,
   }
 
+  // 👇👇👇 修复核心：显式指定高度，强制撑开！ 👇👇👇
   const mainAreaStyle: React.CSSProperties = {
     flex: 1,
     display: 'flex',
@@ -214,6 +230,7 @@ const ChatInterface = () => {
     overflow: 'hidden',
     position: 'relative',
     zIndex: 1,
+    height: 'calc(100vh - 32px)' // 👈 这一行是救命稻草！
   }
 
   const headerStyle: React.CSSProperties = {
@@ -223,6 +240,7 @@ const ChatInterface = () => {
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: 'white',
+    flexShrink: 0,
   }
 
   const messagesAreaStyle: React.CSSProperties = {
@@ -230,6 +248,8 @@ const ChatInterface = () => {
     overflowY: 'auto',
     padding: '24px',
     backgroundColor: 'rgba(249, 250, 251, 0.6)',
+    scrollBehavior: 'auto',
+    minHeight: 0 // 防止 Flex 子项溢出
   }
 
   const userMessageStyle: React.CSSProperties = {
@@ -271,6 +291,7 @@ const ChatInterface = () => {
     display: 'flex',
     gap: '12px',
     alignItems: 'flex-end',
+    flexShrink: 0,
   }
 
   const textareaStyle: React.CSSProperties = {
@@ -313,6 +334,7 @@ const ChatInterface = () => {
     boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
     position: 'relative',
     zIndex: 1,
+    height: 'calc(100vh - 32px)' // 侧边栏也加上这个高度，保持对齐
   }
 
   const errorStyle: React.CSSProperties = {
@@ -326,12 +348,9 @@ const ChatInterface = () => {
 
   return (
     <div style={containerStyle}>
-      {/* 背景层（模糊） */}
       <div style={backgroundStyle} />
 
-      {/* 主聊天区域 */}
       <div style={mainAreaStyle}>
-        {/* 头部 */}
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <h1 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0 }}>
@@ -353,12 +372,8 @@ const ChatInterface = () => {
                 fontSize: '14px',
                 color: '#111827',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#F3F4F6'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'white'
-              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
             >
               {sidebarOpen ? '隐藏图谱' : '显示图谱'}
             </button>
@@ -373,20 +388,16 @@ const ChatInterface = () => {
                 fontSize: '14px',
                 color: '#111827',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#F3F4F6'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'white'
-              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
             >
               登出
             </button>
           </div>
         </div>
 
-        {/* 消息列表 */}
-        <div style={messagesAreaStyle}>
+        {/* 绑定滚动容器 Ref */}
+        <div style={messagesAreaStyle} ref={scrollContainerRef}>
           {messages.length === 0 && (
             <div style={{
               textAlign: 'center',
@@ -402,7 +413,6 @@ const ChatInterface = () => {
 
           {messages.map((msg, index) => (
             <div key={index}>
-              {/* 用户消息 */}
               {userMessages[index] && (
                 <div style={userMessageStyle}>
                   <div style={userBubbleStyle}>
@@ -411,19 +421,15 @@ const ChatInterface = () => {
                 </div>
               )}
 
-              {/* AI 回答 */}
               <div style={aiMessageStyle}>
                 <div style={aiCardStyle}>
-                  {msg.answer
-                    ? (
+                  {msg.answer ? (
                       <TextFragment
                         content={msg.answer}
                         fragments={msg.fragments || []}
                         onFragmentSelect={handleFragmentSelect}
                       />
-                    )
-                    : loading && !hasFirstChunk && index === messages.length - 1
-                      ? (
+                    ) : loading && !hasFirstChunk && index === messages.length - 1 ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#6B7280' }}>
                           <div style={{
                             width: '16px',
@@ -432,28 +438,20 @@ const ChatInterface = () => {
                             borderTopColor: '#2563EB',
                             borderRadius: '50%',
                             animation: 'spin 1s linear infinite',
-                          }}
-                          />
+                          }} />
                           <span>思考中...</span>
                         </div>
-                        )
-                      : null}
+                    ) : null}
                 </div>
               </div>
             </div>
           ))}
 
-          {/* 错误提示 */}
-          {error && (
-            <div style={errorStyle} role="alert">
-              {error}
-            </div>
-          )}
+          {error && <div style={errorStyle} role="alert">{error}</div>}
 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 输入区域 */}
         <div style={inputAreaStyle}>
           <textarea
             ref={inputRef}
@@ -484,20 +482,15 @@ const ChatInterface = () => {
             disabled={loading || !input.trim()}
             style={buttonStyle}
             onMouseEnter={(e) => {
-              if (!loading && input.trim()) {
-                e.currentTarget.style.backgroundColor = '#1D4ED8'
-              }
+              if (!loading && input.trim()) e.currentTarget.style.backgroundColor = '#1D4ED8'
             }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#2563EB'
-            }}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2563EB'}
           >
             {loading ? '发送中...' : '发送'}
           </button>
         </div>
       </div>
 
-      {/* 思维导图侧边栏 */}
       {sidebarOpen && (
         <div style={sidebarStyle}>
           <div style={{
@@ -520,12 +513,8 @@ const ChatInterface = () => {
                 fontSize: '20px',
                 color: '#6B7280',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = '#111827'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = '#6B7280'
-              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#6B7280'}
             >
               ×
             </button>
