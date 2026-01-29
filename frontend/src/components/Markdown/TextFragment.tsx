@@ -3,6 +3,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css' 
 import { ContentFragment } from '../../types/api'
+import remarkGfm from 'remark-gfm'
 
 /**
  * Markdown 文本片段组件
@@ -58,7 +59,7 @@ const TextFragment: React.FC<TextFragmentProps> = ({
       }}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
           code: ({ node, className, children, ...props }) => {
