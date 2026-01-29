@@ -4,6 +4,8 @@ import Login from './components/Auth/Login'
 import Register from './components/Auth/Register'
 import ChatInterface from './components/Chat/ChatInterface'
 import './App.css'
+import 'katex/dist/katex.min.css'
+
 
 /**
  * 应用主组件

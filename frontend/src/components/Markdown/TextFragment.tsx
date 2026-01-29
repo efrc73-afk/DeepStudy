@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css' 
 import { ContentFragment } from '../../types/api'
 
 /**
@@ -11,6 +12,16 @@ interface TextFragmentProps {
   content: string
   fragments?: ContentFragment[]
   onFragmentSelect?: (fragmentId: string) => void
+}
+
+// 新增这个“翻译”函数，把 AI 的方括号变成 $ 符号
+const preprocessLaTeX = (content: string) => {
+  if (typeof content !== 'string') return ''
+  return content
+    .replace(/\\\[/g, '$$$') // 把 \[ 变成 $$
+    .replace(/\\\]/g, '$$$') // 把 \] 变成 $$
+    .replace(/\\\(/g, '$')   // 把 \( 变成 $
+    .replace(/\\\)/g, '$')   // 把 \) 变成 $
 }
 
 const TextFragment: React.FC<TextFragmentProps> = ({
@@ -86,7 +97,8 @@ const TextFragment: React.FC<TextFragmentProps> = ({
           },
         }}
       >
-        {content}
+        {/* 这里一定要用处理过的文本！ */}
+        {preprocessLaTeX(content)}
       </ReactMarkdown>
     </div>
   )
