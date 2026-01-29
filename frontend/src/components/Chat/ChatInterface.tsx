@@ -169,6 +169,39 @@ const ChatInterface = () => {
       setLoading(false)
     }
   }
+/**
+   * 处理片段选择（划词追问）
+   */
+  const handleFragmentSelect = (fragmentId: string, selectedText: string) => {
+    setSelectedFragmentId(fragmentId)
+    setSelectedText(selectedText)
+    setQuestionInput('')
+    setQuestionModalOpen(true)
+  }
+
+   /**
+   * 处理追问提交
+   */
+  const handleQuestionSubmit = async () => {
+    if (!questionInput.trim()) return
+
+    setQuestionModalOpen(false)
+    setInput(questionInput)
+    
+    setTimeout(() => {
+      handleSend(selectedFragmentId, selectedText)
+    }, 0)
+  }
+
+  /**
+   * 处理追问取消
+   */
+  const handleQuestionCancel = () => {
+    setQuestionModalOpen(false)
+    setSelectedFragmentId('')
+    setSelectedText('')
+    setQuestionInput('')
+  }
 
   const handleFragmentSelect = (fragmentId: string) => {
     const query = prompt('请输入你的问题:')
